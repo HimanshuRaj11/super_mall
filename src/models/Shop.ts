@@ -1,4 +1,7 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
+import '@/models/User';
+import '@/models/Floor';
+import '@/models/Category';
 
 export interface IShop extends Document {
     merchantId: mongoose.Types.ObjectId;

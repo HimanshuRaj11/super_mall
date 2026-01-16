@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
+import '@/models/Shop';
 
 export interface IProduct extends Document {
     shopId: mongoose.Types.ObjectId;
