@@ -8,11 +8,6 @@ export async function middleware(req: NextRequest) {
     const token = req.cookies.get('token')?.value;
     const { pathname } = req.nextUrl;
 
-    const isProtectedPath =
-        pathname.startsWith('/admin') ||
-        pathname.startsWith('/merchant') ||
-        pathname.startsWith('/profile');
-
     // Skip public assets and APIs
     if (
         pathname.startsWith('/_next') ||
@@ -22,68 +17,90 @@ export async function middleware(req: NextRequest) {
         return NextResponse.next();
     }
 
-    // Public auth routes
+    // Public auth routes - redirect if logged in
     if (pathname.startsWith('/login') || pathname.startsWith('/register')) {
         if (token) {
-            // If already logged in, redirect to dashboard/home
-            // We'd verify here ideally, but simple check is okay for now
-            // Better to verify to avoid loops with invalid tokens
+            try {
+                const secret = new TextEncoder().encode(JWT_SECRET);
+                await jwtVerify(token, secret);
+                // If token is valid, redirect related to role or just home for now
+                // Ideally checks role but basic is fine.
+            } catch (e) {
+                // Invalid token, stay on login page
+                return NextResponse.next();
+            }
         }
         return NextResponse.next();
     }
 
-    if (isProtectedPath || pathname.startsWith('/api/admin') || pathname.startsWith('/api/merchant')) {
-        if (!token) {
-            if (pathname.startsWith('/api')) {
-                return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-            }
-            return NextResponse.redirect(new URL('/login', req.url));
-        }
-
+    // 1. Authenticate & Decode (If token exists)
+    let userPayload: { id: string; role: string } | null = null;
+    if (token) {
         try {
             const secret = new TextEncoder().encode(JWT_SECRET);
             const { payload } = await jwtVerify(token, secret);
-
-            const role = payload.role as string;
-
-            // Role based access
-            if (pathname.startsWith('/admin') && role !== 'admin') {
-                return NextResponse.redirect(new URL('/', req.url)); // or /unauthorized
-            }
-
-            if (pathname.startsWith('/merchant') && role !== 'merchant' && role !== 'admin') {
-                return NextResponse.redirect(new URL('/', req.url));
-            }
-
-            if (pathname.startsWith('/api/admin') && role !== 'admin') {
-                return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-            }
-
-            if (pathname.startsWith('/api/merchant') && role !== 'merchant' && role !== 'admin') {
-                return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-            }
-
-            // Add user info to headers for API routes ease
-            const requestHeaders = new Headers(req.headers);
-            requestHeaders.set('x-user-id', payload.id as string);
-            requestHeaders.set('x-user-role', role);
-
-            return NextResponse.next({
-                request: {
-                    headers: requestHeaders,
-                },
-            });
-
+            userPayload = {
+                id: payload.id as string,
+                role: payload.role as string,
+            };
         } catch (error) {
-            // Token invalid
-            if (pathname.startsWith('/api')) {
-                return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-            }
-            return NextResponse.redirect(new URL('/login', req.url));
+            // Token invalid - ignore payload, treat as guest
         }
     }
 
-    return NextResponse.next();
+    // 2. Define Protected Paths
+    const isProtectedPage =
+        pathname.startsWith('/admin') ||
+        pathname.startsWith('/merchant') ||
+        pathname.startsWith('/profile');
+
+    const isProtectedApi =
+        pathname.startsWith('/api/admin') ||
+        pathname.startsWith('/api/merchant');
+
+    // 3. Enforce Auth for Protected Routes
+    if ((isProtectedPage || isProtectedApi) && !userPayload) {
+        if (pathname.startsWith('/api')) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+        return NextResponse.redirect(new URL('/login', req.url));
+    }
+
+    // 4. Enforce Role Permissions
+    if (userPayload) {
+        const { role } = userPayload;
+
+        // Admin Pages
+        if (pathname.startsWith('/admin') && role !== 'admin') {
+            return NextResponse.redirect(new URL('/', req.url));
+        }
+        // Merchant Pages
+        if (pathname.startsWith('/merchant') && role !== 'merchant' && role !== 'admin') {
+            return NextResponse.redirect(new URL('/', req.url));
+        }
+        // Admin API
+        if (pathname.startsWith('/api/admin') && role !== 'admin') {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+        // Merchant API
+        if (pathname.startsWith('/api/merchant') && role !== 'merchant' && role !== 'admin') {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+    }
+
+    // 5. Enhance Request (Inject Headers)
+    // We recreate response/headers because NextRequest is immutable-ish for downstream
+    const requestHeaders = new Headers(req.headers);
+    if (userPayload) {
+        requestHeaders.set('x-user-id', userPayload.id);
+        requestHeaders.set('x-user-role', userPayload.role);
+    }
+
+    return NextResponse.next({
+        request: {
+            headers: requestHeaders,
+        },
+    });
 }
 
 export const config = {
@@ -94,6 +111,7 @@ export const config = {
         '/api/admin/:path*',
         '/api/merchant/:path*',
         '/login',
-        '/register'
+        '/register',
+        '/api/products/:path*' // Added to ensure headers are injected
     ],
 };

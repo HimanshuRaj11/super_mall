@@ -1,14 +1,13 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/db';
 import Shop from '@/models/Shop';
-
 export async function GET(
     request: Request,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         await connectToDatabase();
-        const { id } = params;
+        const { id } = await params;
 
         const shop = await Shop.findById(id)
             .populate('categoryId', 'name')

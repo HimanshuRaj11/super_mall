@@ -6,12 +6,12 @@ import { logAction } from '@/services/logger';
 
 export async function DELETE(
     request: Request,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         await connectToDatabase();
         const userId = request.headers.get('x-user-id');
-        const { id } = params;
+        const { id } = await params;
 
         const offer = await Offer.findById(id);
         if (!offer) return NextResponse.json({ error: 'Not found' }, { status: 404 });

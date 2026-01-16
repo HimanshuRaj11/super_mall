@@ -5,11 +5,11 @@ import { logAction } from '@/services/logger';
 
 export async function PATCH(
     request: Request,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         await connectToDatabase();
-        const { id } = params;
+        const { id } = await params;
         const body = await request.json();
 
         const shop = await Shop.findByIdAndUpdate(id, body, { new: true });
@@ -30,11 +30,11 @@ export async function PATCH(
 
 export async function DELETE(
     request: Request,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         await connectToDatabase();
-        const { id } = params;
+        const { id } = await params;
         await Shop.findByIdAndDelete(id);
 
         const userId = request.headers.get('x-user-id') || undefined;

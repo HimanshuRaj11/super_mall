@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/db';
-import Product from '@/models/Product';
+import Product, { IProduct } from '@/models/Product';
 import Shop from '@/models/Shop';
 import { logAction } from '@/services/logger';
 
@@ -10,6 +10,7 @@ export async function POST(req: Request) {
         // Validate User
         const userId = req.headers.get('x-user-id');
         const role = req.headers.get('x-user-role');
+        console.log(userId, role);
         if (!userId || (role !== 'merchant' && role !== 'admin')) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
@@ -22,10 +23,10 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Shop not found' }, { status: 404 });
         }
 
-        const product = await Product.create({
+        const product = (await Product.create({
             ...body,
             shopId: shop._id
-        });
+        })) as unknown as IProduct;
 
         await logAction('CREATE_PRODUCT', { productId: product._id, shopId: shop._id }, userId);
 
